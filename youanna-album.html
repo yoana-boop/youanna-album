@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>优安纳伞业  全球折叠伞制造专家</title>
+<meta name="description" content="优安纳伞业 H5 电子宣传画册 · 全球折叠伞制造专家">
+<meta property="og:title" content="优安纳伞业  全球折叠伞制造专家">
+<meta property="og:type" content="website">
+<style>
+/* ===== 优安纳伞业 H5 电子画册 · 分享端样式（横屏优先 / 微信兼容 / 防闪屏） ===== */
+:root {
+  --primary: #13283f;
+  --accent: #c9a24b;
+  --ink: #f4efe6;
+  --muted: rgba(244, 239, 230, 0.74);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  color: var(--ink);
+  /* 标准黑体字体栈：仅内置系统字体，不引入外部艺术字体 */
+  font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 舞台：固定铺满视口（尺寸由 JS 计算，兼容微信 X5），画布由 JS 居中缩放 */
+#stage {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+}
+.fit { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+/* 承载层：强制横屏——始终旋转 90° 填满物理横屏（不依赖方向检测，根治微信/X5 横屏视口不翻转） */
+.rotor {
+  position: fixed; top: 0; left: 0;
+  width: 100vh; height: 100vw;
+  transform-origin: 0 0;
+  transform: rotate(90deg) translateY(-100vw);
+  overflow: hidden;
+}
+.canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--primary);
+  overflow: hidden;
+}
+
+/* 自由画布页面：元素绝对定位，基础淡入淡出平滑翻页（无悬浮/弹窗/复杂遮罩） */
+.page {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateX(5%);
+  pointer-events: none;
+  transition: opacity .5s ease, transform .5s ease;
+  overflow: hidden;
+}
+.page.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
+.page.prev { transform: translateX(-5%); }
+.page.next { transform: translateX(5%); }
+
+/* 画布元素（单页图文层级 ≤ 2：背景 + 内容） */
+.el { position: absolute; }
+.el-img { border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.06); }
+.el-img img { border-radius: 6px; }
+.el-img .img-wrap { width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+.el-text { display: flex; flex-direction: column; justify-content: flex-start; pointer-events: none; overflow: visible; }
+.el-zh { word-break: break-word; }
+.el-en { margin-top: .3em; opacity: .82; letter-spacing: .02em; font-weight: 300; word-break: break-word; overflow-wrap: break-word; }
+
+/* 占位提示 */
+.ph-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(244,239,230,.5); font-size: 14px; letter-spacing: .1em; }
+
+/* 导航（基础、无悬浮特效） */
+/* UI 叠层：包含翻页按钮/页码/圆点，与舞台同步旋转；自身不接收点击，仅按钮可点 */
+/* UI 叠层：与 rotor 同步旋转 90°（同一坐标系），翻页按钮/页码/圆点在物理横屏下均正立 */
+#ui {
+  position: fixed; top: 0; left: 0;
+  width: 100vh; height: 100vw;
+  transform-origin: 0 0;
+  transform: rotate(90deg) translateY(-100vw);
+  pointer-events: none; z-index: 15;
+}
+#nav { position: absolute; bottom: 10px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 10px; z-index: 20; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(244,239,230,.3); cursor: pointer; transition: background .3s, transform .3s; }
+.dot.active { background: var(--accent); transform: scale(1.3); }
+#arrows { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 8px; z-index: 10; pointer-events: none; }
+.arrow { pointer-events: auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(244,239,230,.3); background: rgba(0,0,0,.25); color: var(--ink); font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .3s; }
+.arrow:hover { background: rgba(201,162,75,.4); }
+.page-no { position: absolute; top: 12px; right: 14px; font-size: 13px; color: var(--muted); letter-spacing: .1em; z-index: 20; }
+
+/* 顶部目录导航：插在画布内、贴画布顶部；画布始终正立，故目录条恒在物理正上方 */
+#toc { position: absolute; top: 0; left: 0; right: 0; z-index: 25; display: flex; flex-direction: row; align-items: stretch; gap: 2px; padding: 4px 6px; background: rgba(8,16,26,.82); overflow-x: auto; -webkit-overflow-scrolling: touch; pointer-events: auto; }
+#toc::-webkit-scrollbar { height: 0; }
+.toc-item { flex: 1 0 auto; min-width: 60px; min-height: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3px 5px; cursor: pointer; border-radius: 6px; color: var(--muted); white-space: nowrap; transition: background .2s, color .2s; }
+.toc-item .t-zh { font-size: calc(var(--ch, 600px) * 0.026); font-weight: 700; line-height: 1.1; }
+.toc-item .t-en { font-size: calc(var(--ch, 600px) * 0.015); font-weight: 300; letter-spacing: .02em; opacity: .82; margin-top: 2px; }
+.toc-item.active { background: rgba(201,162,75,.18); color: var(--accent); }
+.toc-item:active { background: rgba(201,162,75,.32); }
+
+/* 竖屏提示：顶部小条，不遮挡画册内容。强制横屏模式下由纯 CSS 媒体查询控制显隐：
+   普通浏览器竖屏显示「请横屏」引导；微信/X5 对 orientation 媒体查询不可靠时可能不显示，
+   但画布已按横屏铺满，用户横过来即完整可见，无需提示亦可。 */
+#rotate {
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 80; display: none; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 14px;
+  background: rgba(201, 162, 75, .94); color: #1a1206;
+  font-size: 14px; font-weight: 700; letter-spacing: .04em;
+  box-shadow: 0 2px 10px rgba(0,0,0,.3);
+}
+#rotate .ico { font-size: 1.2em; }
+/* 视口高>宽（竖屏）时显示提示条引导横屏；横屏隐藏。JS 不再控制 .show */
+@media (orientation: portrait) { #rotate { display: flex; } }
+
+/* PDF 导出按钮：仅后台「导出 PDF」打开的 ?export=1 页面显示，普通客人扫码页隐藏 */
+#pdfBtn{display:none;position:fixed;right:24px;top:24px;z-index:9999;padding:14px 26px;border:0;border-radius:999px;background:linear-gradient(135deg,#c9a24b,#a8842f);color:#1a1206;font:700 16px/1 -apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif;box-shadow:0 10px 32px rgba(0,0,0,.45);cursor:pointer;letter-spacing:.04em;animation:pdfPulse 2.2s ease-in-out infinite;}
+#pdfBtn:disabled{opacity:.7;cursor:default;animation:none;}
+#pdfBtn::before{content:"📥";margin-right:8px;font-size:1.15em;}
+@keyframes pdfPulse{0%,100%{box-shadow:0 10px 32px rgba(0,0,0,.45),0 0 0 0 rgba(201,162,75,.55);}50%{box-shadow:0 10px 32px rgba(0,0,0,.45),0 0 0 10px rgba(201,162,75,0);}}
+
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="ui">
+<div id="arrows"><button class="arrow" id="prevBtn" aria-label="上一页">‹</button><button class="arrow" id="nextBtn" aria-label="下一页">›</button></div>
+<div class="page-no" id="pageNo"></div>
+<div id="nav"><div id="dots" style="display:flex;gap:10px"></div></div>
+</div>
+<div id="rotate"><span class="ico">📱</span><span>请将手机横向旋转获得最佳浏览体验</span></div>
+<button id="pdfBtn" type="button">导出 PDF</button>
+<button id="pdfVolumes" type="button" style="position:fixed;top:24px;right:150px;z-index:9999;display:none;padding:10px 16px;border-radius:10px;border:none;background:#1e88e5;color:#fff;font-size:15px;cursor:pointer;">分卷下载(高清)</button>
+<div id="pdfStatus" style="position:fixed;top:72px;right:24px;z-index:9999;display:none;max-width:250px;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font-size:13px;line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.3);"></div>
+<script>window.__EMBED__ = {"brand":{"name":"优安纳伞业","enName":"Youana Umbrella","slogan":"全球折叠伞制造专家","logo":"","primary":"#13283f","accent":"#c9a24b"},"pages":[{"id":"emtaxxscv551","type":"home","section":"首页","title":"首页","titleEn":"Home","nav":{"zh":"首页","en":"Home"},"bg":"#0d1b2a","elements":[{"id":"emtbbijsu258","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428096490-7ffp8z.jpg","x":0,"y":0,"w":100.41866057100354,"h":100.41866057100354,"scale":0.9983404542906756,"ox":50,"oy":50,"bx":0,"by":0,"bw":100.41866057100354,"bh":100.41866057100354}]},{"id":"emtaxyvk6407","type":"about","section":"优安纳简介","title":"优安纳简介","titleEn":"About Youana","nav":{"zh":"优安纳简介","en":"About Youana"},"bg":"#f4efe6","elements":[{"id":"emtaxyvk6390","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428097046-a1ysav.jpg","x":51.85265343995504,"y":15.754255734520273,"w":44.473684210526315,"h":26.73046392033442,"ox":0,"oy":62,"scale":1,"bx":52.00817262426835,"by":2.734528617115845,"bw":50.14495093016217,"bh":37.09535050789693,"imgLock":true},{"id":"emtaxyvk6414","type":"text","zh":"优安纳简介","en":"ABOUT YOUANA","x":6.20672480611457,"y":13.586052154726266,"w":40,"fontSize":6,"color":"#1d2b3a","weight":800,"align":"left","h":14.553990610328638},{"id":"emtaxyvk6905","type":"text","zh":"福建优安纳伞业科技有限公司始创于 1991 年，扎根享有 “中国伞都” 盛誉的晋江东石镇。厂区占地 8 万平方米，现有员工近千人。紧跟产业升级步伐，公司全面推进数字化革新与绿色低碳智造转型，以智能赋能生产、以环保践行发展，构筑现代化高标准制造体系；是一家从设计、研发、到冷扎、塑胶、伞骨及其配件等全产业链齐全的伞业制造商。\n深耕行业三十余载，现已成为集研发、生产、全球销售于一体的综合型伞具制企业，配套省级伞具检测技术中心，累计拥有 200 余项自主专利；核心产品安全防护自动开合伞斩获国家专利优秀奖，多项原创技术填补国内行业空白。\n依托稳定产能与过硬品质，企业累计产销晴雨折叠伞超 20 亿把，产品远销全球 80 多个国家和地区，覆盖欧美、东南亚、非洲主流市场；海外布局多处生产基地，搭建 20 余个全球销售服务网点，可承接 ODM/OEM 专属定制与自主品牌出海合作，匠心产品收获海内外客户长期信赖。","en":"","x":51.97368421052632,"y":42.48471965485469,"w":44.352653439955034,"fontSize":2.4,"color":"#000000","weight":400,"align":"left","lineHeight":1.5,"letterSpacing":0,"h":54.694835680751176},{"id":"emtb5cdnl508","type":"text","zh":"\n","en":"Fujian Youanna Umbrella Technology Co., Ltd. was founded in 1991 in Dongshi Town, Jinjiang, reputed as theCapital of China’s Umbrella Industry. Covering a factory area of 80,000 square meters, the company now employs nearly 1,000 staff members.Keeping pace with industrial upgrading, the company comprehensively promotes digital innovation and green low-carbon intelligent manufacturing transformation. It empowers production with intelligence and pursues sustainable development with environmental protection, building a modern high-standard manufacturing system. As a professional umbrella manufacturer, it boasts a complete full industrial chain covering design, research and development, cold rolling, plastic processing, umbrella frame production and supporting accessories.\nWith over 30 years of in-depth dedication to the industry, Yoana has grown into a comprehensive umbrella enterprise integrating R&D, production and global sales. Equipped with a provincial-level umbrella testing technology center, the company holds more than 200 independent patents. Its core product — the intelligent safety auto-open-and-close umbrella — has won the National Excellent Patent Award, and a number of original technologies have filled domestic gaps in the industry.\nBacked by stable production capacity and superior product quality, the company has produced and sold over 2 billion folding sun and rain umbrellas in total. Its products are exported to more than 80 countries and regions worldwide, covering mainstream markets in Europe, America, Southeast Asia and Africa. With multiple overseas production bases and over 20 global sales and service outlets, the company provides customized ODM/OEM services and independent brand overseas cooperation. Its ingenuously crafted products have earned long-term trust from customers at home and abroad.","x":5.680409016640885,"y":31.51764145535611,"w":44.31959098335911,"fontSize":2.6,"color":"#000000","weight":400,"align":"justify","enSize":1.6,"h":38.31449603987418}]},{"id":"emtb5iyw8576","type":"rd","section":"科研创新","title":"科研创新","titleEn":"R&D","nav":{"zh":"科研创新","en":"R&D"},"bg":"#10202f","elements":[{"id":"emtb5iyw8833","type":"text","zh":"科研创新","en":"R&D INNOVATION","x":6.473684210526315,"y":14,"w":24.526315789473685,"fontSize":6,"color":"#ffffff","weight":800,"align":"left","h":14.823529411764705},{"id":"emtb5iyw8233","type":"text","zh":"2018 年，优安纳联合行业多家龙头企业，斥资 1000 万元共建海峡（晋江）伞业科技创新中心，为国内伞具行业首个集技术研发、成果转化、检验检测、标准制定、科研实验、人才培育于一体的一站式公共科创服务平台。\n中心长期联动国内知名高校深化产学研协同创新，搭建专家工作站、行业工程技术研究中心、科技特派员工作站、伞都众创空间等多元人才载体，柔性引进国家万人计划专家、享受国务院特殊津贴专家、教授级高工及硕博人才 30 余名，围绕伞具新材料研发、产品创新设计、绿色数字化制造等关键方向开展技术攻坚，全方位驱动产业转型升级。\n公司每年稳定加码研发投入，持续升级实验室与智能试验设备，依托完备科创体系打磨兼具前沿技术与高性价比的伞具产品，精准匹配全球客户多元化定制需求。","en":"","x":6.473684210526315,"y":30,"w":46.81578947368421,"fontSize":2.4,"color":"#cdd8e3","weight":400,"align":"left","letterSpacing":0,"lineHeight":1.5,"h":36.94117647058823},{"id":"emtb5iyw8196","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428098343-zrvqwy.jpg","x":55.92105263157895,"y":18.054024255158666,"w":38.078947368421055,"h":43.89195148968267,"ox":49.28439172026682,"oy":0,"scale":1,"bx":55.92105263157895,"by":18.054024255158666,"bw":38.078947368421055,"bh":43.89195148968267},{"id":"emtbb7pg8955","type":"text","zh":"","en":"In 2018, Yoana teamed up with leading enterprises in the industry to invest 10 million RMB in building the Cross-Strait (Jinjiang) Umbrella Industry Science and Technology Innovation Center, the first one-stop public sci-tech service platform in China’s umbrella sector integrating R&D, achievement commercialization, inspection & testing, standard formulation, lab research and talent training.\nThe center maintains long-term industry-university-research cooperation with top domestic universities and runs multiple talent platforms including expert workstations, industrial engineering research centers, sci-tech commissioner stations and the Umbrella Capital Maker Space. More than 30 high-caliber talents are flexibly recruited, including national Ten-Thousand Talents Program experts, State Council Special Allowance specialists, senior engineers and PhD & master holders. The team carries out technical breakthroughs in new umbrella materials, innovative product design and green digital manufacturing to fuel industrial transformation and upgrading.\nThe company sustains steady annual R&D investment and continuously upgrades laboratories and intelligent test equipment. Supported by a complete sci-tech system, we develop cost-effective, cutting-edge umbrellas to meet diverse customized demands from global clients.","x":6.208198948910486,"y":69.50985607174384,"w":87.28707403885691,"fontSize":2.4,"enSize":1.6,"color":"#ffffff","weight":400,"align":"justify","lineHeight":1.35,"letterSpacing":0,"h":15.764705882352942}]},{"id":"emtb6hgza509","type":"honors","section":"资质荣誉","title":"资质荣誉","titleEn":"Honors","nav":{"zh":"资质荣誉","en":"Honors"},"bg":"#f4efe6","elements":[{"id":"emtb6hgza863","type":"text","zh":"资质荣誉","en":"QUALIFICATIONS","x":5.921052631578966,"y":10,"w":19.394736842105264,"fontSize":5.5,"color":"#1d2b3a","weight":800,"align":"left"},{"id":"emtb6hgza24","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428099253-n7n4wd.jpg","x":8.772515945257158,"y":27.94871292212089,"w":22.52632542660362,"h":29.84242170228842,"ox":100,"oy":100,"scale":1,"bx":8.772515945257158,"by":27.94871292212089,"bw":22.52632542660362,"bh":29.84242170228842},{"id":"emtbbw452123","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428099927-p3oe1o.jpg","x":8.786356156534499,"y":64.45037913614638,"w":22.520084584672322,"h":29.83415396073874,"ox":50,"oy":50,"scale":0.9939603135593258,"z":0.5,"bx":8.786356156534499,"by":64.45037913614638,"bw":22.520084584672322,"bh":29.83415396073874},{"id":"emtbby7br30","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428101824-8eugvm.jpg","x":38.40273404821057,"y":27.959104904297234,"w":22.51848111776477,"h":29.832029720112075,"ox":50,"oy":50,"scale":0.9939603135593258,"z":0.5,"bx":38.40273404821057,"by":27.959104904297234,"bw":22.51848111776477,"bh":29.832029720112075},{"id":"emtbbyr9i941","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428102996-rrwhoo.jpg","x":38.42705066249319,"y":64.11355199650711,"w":22.49416450348215,"h":29.799815559832883,"ox":50,"oy":50,"scale":0.9939603135593258,"z":1,"bx":38.42705066249319,"by":64.11355199650711,"bw":22.49416450348215,"bh":29.799815559832883},{"id":"emtbc56bj684","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428103947-6jb9ef.jpg","x":67.71564606351635,"y":27.642963532095678,"w":22.811587470690185,"h":30.220331106244487,"ox":50,"oy":50,"scale":0.9939603135593258,"z":2,"bx":67.71564606351635,"by":27.642963532095678,"bw":22.811587470690185,"bh":30.220331106244487},{"id":"emtbc5xar834","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428104813-neyflb.jpg","x":67.71465247618637,"y":63.90299186713817,"w":22.811587470690185,"h":30.220331106244487,"ox":50,"oy":50,"scale":0.9939603135593258,"z":3,"bx":67.71465247618637,"by":63.90299186713817,"bw":22.811587470690185,"bh":30.220331106244487},{"id":"emtbcd66f613","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428105228-ej5j16.jpg","x":53.068994709858586,"y":9.557049337236501,"w":16.49999518143505,"h":10.077284211613145,"scale":0.8447001916951886,"ox":50,"oy":50,"bx":53.068994709858586,"by":9.557049337236501,"bw":16.49999518143505,"bh":10.077284211613145},{"id":"emtbcguf39","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428105514-pxuofj.jpg","x":71.17407459018544,"y":9.395038314914945,"w":6.000000000000001,"h":10.604961685085053,"scale":0.9679733373367594,"ox":50,"oy":50,"z":4,"bx":71.17407459018544,"by":9.395038314914945,"bw":6.000000000000001,"bh":10.604961685085053},{"id":"emtbci6l3364","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428105858-14hdvz.jpg","x":79.09923183959627,"y":10.965546031109382,"w":11.428001694610266,"h":9.03445396889062,"scale":1,"ox":57,"oy":50,"z":5,"bx":79.09923183959627,"by":10.965546031109382,"bw":11.428001694610266,"bh":9.03445396889062},{"id":"emtbcrxg6390","type":"text","zh":"","en":"China' s national high-tech companies","x":8.772515945257158,"y":58.43148264615638,"w":22.470610045808744,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0},{"id":"emtc7v69s736","type":"text","zh":"","en":"National-level enterprises with \nintellectual property advantages","x":38.47289886798636,"y":58.43170707297464,"w":22.470610045808744,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":6},{"id":"emtc7w44e215","type":"text","zh":"","en":"National green factory","x":67.61511185682858,"y":58.43314501105973,"w":22.470610045808744,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":7},{"id":"emtcepzwd280","type":"text","zh":"","en":"China' s national high-tech companies","x":39.000733919019346,"y":80,"w":22.470610045808744,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":8},{"id":"emtceq4vi822","type":"text","zh":"","en":"China's top 10 umbrella manufacturing (finished umbrella)\ncompanies in the light industry","x":38.11922528717678,"y":94.28453309688513,"w":22.38369934350445,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":9},{"id":"emtcer2bp50","type":"text","zh":"","en":"Internationally Renowned Brand","x":68.34105483220063,"y":94.40913200264367,"w":22.470610045808744,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":10},{"id":"emtcesvo481","type":"text","zh":"","en":"SRDI(Specialized;Refinement;Differential;","x":9.87149575903604,"y":94.03489726214661,"w":11.493850587191117,"fontSize":2.4,"enSize":1.6,"color":"#000000","weight":400,"align":"center","lineHeight":1.35,"letterSpacing":0,"z":11}]},{"id":"emtbc3nf8206","type":"new","section":"新品","title":"新品","titleEn":"New","nav":{"zh":"新品","en":"New"},"bg":"#0f1a26","elements":[{"id":"emti3h9es602","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428106549-y4m1lz.jpg","x":0.21929287404167752,"y":0,"w":99.78070712595833,"h":110.78682247631113,"bx":-0.2923904987222371,"by":-4.132812223145461,"bw":99.78070712595833,"bh":110.78682247631113,"imgLock":true}]},{"id":"emtbc3ri7946","type":"folding","section":"折叠伞","title":"折叠伞","titleEn":"Folding","nav":{"zh":"折叠伞","en":"Folding"},"bg":"#0f1a26","elements":[{"id":"emtgicuwj199","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428107166-xcil56.jpg","x":-3.0900005885462463,"y":4.834880787920433,"w":103.09000058854625,"h":90.33023842415913,"bx":-2.658582796242989,"by":5.0238907395000965,"bw":103.09000058854625,"bh":90.33023842415913,"imgLock":true}]},{"id":"emtbc3sb4859","type":"straight","section":"直骨伞","title":"直骨伞","titleEn":"Straight","nav":{"zh":"直骨伞","en":"Straight"},"bg":"#13283f","elements":[{"id":"emtgidz7t350","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428107743-8hzrwv.jpg","x":0,"y":9.98103930431784,"w":112.71007323602504,"h":80.03792139136432,"bx":-0.7948712992190785,"by":12.684625443477628,"bw":112.71007323602504,"bh":80.03792139136432,"imgLock":true}]},{"id":"emtbc3szj833","type":"kids","section":"童伞","title":"童伞","titleEn":"Kids","nav":{"zh":"童伞","en":"Kids"},"bg":"#0d1b2a","elements":[{"id":"emtgife1l605","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428108255-mmudqc.jpg","x":0.20670980657556015,"y":9.290609072040962,"w":99.79329019342444,"h":81.41878185591808,"bx":0.2924065606041709,"by":11.143605290027264,"bw":99.79329019342444,"bh":81.41878185591808,"imgLock":true}]},{"id":"emtbc3trr876","type":"contact","section":"联系我们","title":"联系我们","titleEn":"Contact","nav":{"zh":"联系我们","en":"Contact"},"bg":"#f4efe6","elements":[{"id":"emtbc3trr416","type":"text","zh":"联系我们","en":"CONTACT US","x":6,"y":10,"w":50,"fontSize":5.5,"color":"#1d2b3a","weight":800,"align":"left","h":13.647058823529413},{"id":"emtcp0sl2361","type":"text","zh":"网址/Web:www.yoana-umberlla.com\n\n","en":"","x":6,"y":26.22222222222222,"w":40,"fontSize":2.4,"color":"#37474f","weight":600,"align":"left","lineHeight":1.5,"letterSpacing":0.2,"h":4.470588235294118},{"id":"emtcp9vhu152","type":"text","zh":"电话/Tel:+86 18160991775","en":"","x":6,"y":30,"w":40,"fontSize":2.4,"color":"#37474f","weight":600,"align":"left","lineHeight":1.5,"letterSpacing":0.2,"z":1,"h":4.470588235294118},{"id":"emtcq1smf965","type":"text","zh":"邮件/Email:hongsheng9@cnhongxiang.com","en":"","x":6,"y":33.87532086541987,"w":40,"fontSize":2.4,"color":"#37474f","weight":600,"align":"left","lineHeight":1.5,"letterSpacing":0.2,"z":2,"h":4.470588235294118},{"id":"emtcq6ubp728","type":"text","zh":"地址/Add:SHanqian Industrial Zone,Dongshi,Jinjiang,Fujian,CHINA\n\n","en":"","x":6,"y":37.65309864319765,"w":40,"fontSize":2.4,"color":"#37474f","weight":600,"align":"left","lineHeight":1.5,"letterSpacing":0.2,"z":3,"h":8.235294117647058},{"id":"emtgi2gyl244","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428108914-3skmb2.jpg","x":48.38517439992802,"y":19.148728694713483,"w":48.744020963969994,"h":69.53747983608882,"bx":48.38517439992802,"by":11.350636868483704,"bw":48.744020963969994,"bh":79.7414209144923,"imgLock":true},{"id":"emtgi4fnz885","type":"image","src":"https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content?img=album%2Fimages%2F1788428110078-xzy6dr.jpg","x":5.261494064613853,"y":50,"w":40.73850593538615,"h":38.686208530802304,"bx":5.521532560649671,"by":51.2759204012987,"bw":40.73850593538615,"bh":35.70906330731046,"imgLock":true}]}],"fontScale":1,"updatedAt":"2026-09-01T06:21:15.322Z"};
+</script>
+<script>
+/* ===== 优安纳伞业 H5 电子画册 · 分享端（横屏优先 / 微信兼容 / 防闪屏版） ===== */
+(function () {
+  "use strict";
+
+  // ===== 云端内容端点（暂未启用，保留备用）=====
+  // CLOUD_JSON_URL：填入腾讯云 CloudBase 的 HTTP 访问服务地址后，会自动启用
+  //                 「先用内置内容秒开 → 后台静默升级到云端最新版」。
+  //                 当前留空 = 只使用部署内置内容，不发起任何外部请求（永远可用的兜底）。
+  // CLOUD_TOKEN  ：与云函数环境变量 ALBUM_TOKEN 对应；云函数没开令牌校验时留空即可。
+  var CLOUD_JSON_URL = "https://youanna-album-d2g77e9hr1805d56d-1478789156.ap-shanghai.app.tcloudbase.com/album-content";
+  var CLOUD_TOKEN = "youanna2025";
+  // 导出模式：后台「导出 PDF」会打开 album.html?export=1，仅此模式显示导出按钮
+  var EXPORT_MODE = location.search.indexOf("export=1") >= 0;
+
+  // 内容优先级：分享短链(#d=压缩 / #c=原始) 立即返回；其余交给实时拉取（fetchLiveContent 内含 本地/内置 兜底）
+  function loadContent() {
+    var hash = location.hash || "";
+    if (hash.indexOf("#d=") === 0 && window.LZString) {
+      try {
+        var dec = window.LZString.decompressFromEncodedURIComponent(hash.slice(3));
+        if (dec) return JSON.parse(dec);
+      } catch (e) { /* ignore */ }
+    }
+    if (hash.indexOf("#c=") === 0) {
+      try { return JSON.parse(decodeURIComponent(hash.slice(3))); } catch (e) { /* ignore */ }
+    }
+    return null; // 非分享链：由 fetchLiveContent 实时拉取服务器最新内容
+  }
+
+  // 读取 URL 中的外部存储 ID（后台生成的二维码会带 ?b=<id>）
+  function getBlobId() {
+    var m = location.search.match(/[?&]b=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  // 内容拉取：同域静态 content.json（部署时与页面一致）→ 失败回退 本机 localStorage > 部署内置 __EMBED__。
+  // 说明：外部存储(jsonblob)方案已在当前网络/CORS 下确认不可用（POST 403、无跨域头），已废弃；
+  // 线上内容更新走「后台改完 → 导出 content.json → 重新打包部署」，故此处不再发起任何外部请求，画册即时打开。
+  function fetchLiveContent(cb, fail) {
+    var done = false;
+    function fallback() {
+      if (done) return; done = true;
+      var ls = localStorage.getItem("youanna_brochure");
+      if (ls) { try { cb(JSON.parse(ls)); return; } catch (e) { /* ignore */ } }
+      if (window.__EMBED__) { cb(window.__EMBED__); return; }
+      if (fail) fail();
+    }
+    fetch("content.json?t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (d) { if (d && d.pages) { if (!done) { done = true; cb(d); } } else fallback(); })
+      .catch(function () { fallback(); });
+  }
+
+  var content = loadContent();
+  var stage = document.getElementById("stage");
+  var ui = document.getElementById("ui");
+  var arrowsEl = document.getElementById("arrows");
+  var dotsWrap = document.getElementById("dots");
+  var pageNo = document.getElementById("pageNo");
+  var canvas = null;
+  var rotor = null;
+  var current = 0;
+  var pages = [];
+  var tocEl = null; // 顶部目录导航容器
+  var tocItems = []; // 目录项（按栏目去重，每栏目仅首页生成一项）
+  var rotState = 0; // 当前舞台旋转态：0=未旋转，90 / 270=被 CSS 强制旋转，用于把屏幕滑动换算到内容坐标系
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // 元素定位（百分比坐标 + 旋转 + 层级）。字号缩放交由 CSS calc(var(--ch)) 处理，兼容微信 X5。
+  function posStyle(el) {
+    var s = "left:" + (el.x || 0) + "%;top:" + (el.y || 0) + "%;width:" + (el.w || 20) + "%;";
+    if (el.type === "image" || el.type === "rect" || el.type === "button") {
+      // 图片/色块/按钮：固定高度，避免比例失控
+      s += "height:" + (el.h || 20) + "%;";
+    } else if (el.type === "text") {
+      // 文字图层：高度随内容自适应（min-height 兜底），并锁死在「框顶 → 页面底」(100 - el.y) 之内，
+      // 既不裁字、也不溢出页面；内容过长时由 fitTextToBox() 缩小字号装进可用区，电脑/手机渲染一致。
+      var topPct = el.y || 0;
+      var availPct = Math.max(2, 100 - topPct);
+      var mh = el.h != null ? Math.min(el.h, availPct) : availPct;
+      s += "min-height:" + mh + "%;";
+    }
+    s += "z-index:" + (el.z || 0) + ";";
+    if (el.rotate) s += "transform:rotate(" + el.rotate + "deg);";
+    return s;
+  }
+  // 文字样式：基准字号统一由外层 .el-text 的 font-size（calc(var(--ch)*fs/100)）决定，
+  // 这里只输出颜色/字重/对齐/字距/行高，英文用 0.62em 相对缩小（继承 box 字号，便于整体缩放）。
+  function textStyle(el, isEn) {
+    var ls = isEn ? (el.letterSpacingEn != null ? el.letterSpacingEn : el.letterSpacing || 0) : (el.letterSpacing || 0);
+    var lh = isEn ? (el.lineHeightEn != null ? el.lineHeightEn : el.lineHeight || 1.35) : (el.lineHeight || 1.35);
+    var enFs = el.enSize != null ? el.enSize : Math.round((el.fontSize || 3) * 0.62 * 10) / 10;
+    // 英文相对 box 字号的比例（enSize 同样以画布高度百分比表达，换算成相对 box 的 em）
+    var enScale = (el.fontSize || 3) ? (enFs / (el.fontSize || 3)) : 0.62;
+    return "color:" + (el.color || "#ffffff") + ";font-weight:" + (el.weight || 400) +
+      ";text-align:" + (el.align || "left") +
+      ";letter-spacing:calc(var(--ch, 600px) * " + (ls / 100).toFixed(4) + ");line-height:" + lh +
+      (isEn ? ";font-size:" + enScale.toFixed(3) + "em" : "");
+  }
+
+  // 自由画布：所有元素绝对定位（仅元素，背景由外层 section 承载，避免 .page 嵌套导致内容被隐藏）
+  // 图片路径自适应：在云函数网关域名（app.tcloudbase.com）下，相对 images/ 路径无法直读，
+  // 需改写成 ?img= 图片代理；在 CloudStudio 等静态托管下则保持相对路径（同域可直读）。
+  function absImg(src) {
+    if (!src || /^https?:/.test(src) || src.indexOf("data:") === 0) return src;
+    if (location.host.indexOf("app.tcloudbase.com") >= 0 && src.indexOf("images/") === 0) {
+      return location.origin + "/album-content?img=" + encodeURIComponent(src);
+    }
+    return src;
+  }
+  function renderElements(p) {
+    return (p.elements || []).map(function (el) {
+      if (el.type === "image") {
+        // 双矩形裁剪模型（与后台一致）：bx/by/bw/bh=原图框，x/y/w/h=裁剪窗口；旧数据惰性归一化
+        if (el.bx == null) { el.bx = el.x; el.by = el.y; el.bw = el.w; el.bh = el.h; }
+        var ix = (el.bx - el.x) / el.w * 100;
+        var iy = (el.by - el.y) / el.h * 100;
+        var iw = el.bw / el.w * 100;
+        var ih = el.bh / el.h * 100;
+        var inner = el.src
+          ? '<div class="img-clip" style="position:absolute;inset:0;overflow:hidden">' +
+            '<div class="img-layer" style="position:absolute;left:' + ix + "%;top:" + iy + "%;width:" + iw + "%;height:" + ih + '%">' +
+            '<img data-src="' + esc(absImg(el.src)) + '" alt="" decoding="async" loading="lazy" style="width:100%;height:100%;object-fit:contain;display:block;"></div>' +
+            "</div>"
+          : '<span class="ph-label">图片</span>';
+        return '<div class="el el-img" style="' + posStyle(el) + '">' + inner + "</div>";
+      }
+      if (el.type === "rect") {
+        var radius = el.radius ? "border-radius:" + el.radius + "px;" : "";
+        return '<div class="el el-rect" style="' + posStyle(el) + radius + "background:" + (el.bg || "#c9a24b") + '"></div>';
+      }
+      if (el.type === "button") {
+        var bstyle = "background:" + (el.bg || "#c9a24b") + ";color:" + (el.color || "#1a1206") +
+          ";font-size:calc(var(--ch, 600px) * " + ((el.fontSize || 3) / 100).toFixed(4) + ");font-weight:700;" +
+          "text-align:center;border-radius:999px;display:flex;align-items:center;justify-content:center;";
+        var linkAttr = el.link ? ' data-link="' + esc(el.link) + '"' : "";
+        return '<div class="el el-btn"' + linkAttr + ' style="' + posStyle(el) + bstyle + '"><span>' + esc(el.text || el.zh || "按钮") + "</span></div>";
+      }
+      var fsVal = "calc(var(--ch, 600px) * " + ((el.fontSize || 3) / 100).toFixed(4) + ")";
+      var baseFs = "font-size:" + fsVal + ";";
+      var zh = el.zh ? '<div class="el-zh" style="' + textStyle(el, false) + '">' + esc(el.zh) + "</div>" : "";
+      var enStyleStr = textStyle(el, true) + (el.zh ? "" : "margin-top:0;");
+      var en = el.en ? '<div class="el-en" style="' + enStyleStr + '">' + esc(el.en) + "</div>" : "";
+      // data-fs 保存原始基准字号表达式（纯 calc 值），fitTextToBox 在缩放/窗口变化时用于复位
+      var hp = (el.h != null) ? Math.min(el.h, Math.max(2, 100 - (el.y || 0))).toFixed(2) : 0;
+      return '<div class="el el-text" style="' + posStyle(el) + baseFs + '" data-fs="' + fsVal + '" data-hpct="' + hp + '">' + zh + en + "</div>";
+    }).join("");
+  }
+
+  // 读取设备物理方向角（screen.orientation 优先，window.orientation 兜底；微信/X5 可能不暴露 → 返回 null）
+  function readAngle() {
+    var so = screen.orientation;
+    if (so && typeof so.angle === "number") return so.angle;
+    if (typeof window.orientation === "number") return window.orientation;
+    return null;
+  }
+
+  // 物理横竖屏判定（稳健版，根治微信/X5「横屏不过来」）：
+  //  - 视口已翻转(vw>vh)：普通浏览器横屏，直接横屏；
+  //  - 否则依赖设备方向角 angle：90/-90/270 为横屏，0/180 为竖屏；
+  //  - 若 angle 信号不可靠（微信横屏时 angle 不更新，orientationchange 触发后 angle 仍不变），
+  //    标记 angleReliable=false，改默认横屏铺满，避免被误判竖屏、画布缩成窄条「横不过来」。
+  var angleReliable = true;
+  var lastAngle = readAngle();
+  function detectLand() {
+    var vw = window.innerWidth || document.documentElement.clientWidth || 360;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 640;
+    if (vw > vh) return true;                 // 视口翻转 → 真横屏
+    if (!angleReliable) return true;          // angle 不可靠 → 默认横屏铺满
+    var ang = readAngle();
+    if (ang !== null && Math.abs(ang % 180) === 90) return true;  // 物理旋转 90°/270°
+    return false;                             // angle 可靠且为竖屏
+  }
+
+  // 方向适配：视口已是横屏→直接填满；视口仍为竖屏（含微信/X5 不翻转视口）→强制旋转 90° 让横屏内容填满。
+  // 旋转数学：rotor 设为 100vh×100vw，再用 translate(100vw,0) rotate(90)（或 translate(0,100vh) rotate(270)）
+  // 经坐标推导可精确映射到视口 [0,vw]×[0,vh]，保证画面旋转后完整填满、不偏移、不白屏。
+  function applyOrientation() {
+    if (!rotor) return false;
+    var vw = window.innerWidth || document.documentElement.clientWidth || 360;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 640;
+    // 横竖屏判定：优先 CSS media query（微信/X5 对 orientation 媒体查询支持可靠），
+    // 其次 window.orientation，最后退用视口尺寸比较。避免微信横屏后视口尺寸不翻转导致误判为竖屏、
+    // 内容长时间被旋转 90° 且提示条常显、用户“横屏仍进不去”的问题。
+    var forceRot = false; // 强制横屏：竖屏提示条由 CSS @media 控制，JS 不再干预
+    // rotor 与 #ui 的旋转统一由 viewer.css 固定（始终 rotate90 填满物理横屏），
+    // 不在此处覆盖，避免破坏 CSS 旋转、亦彻底不依赖微信/X5 不可靠的方向检测。
+
+    // 目录条 #toc 插在画布内、贴画布顶部，随内容一起旋转；
+    // 内容本身是正立显示的，故画布顶边即等于物理顶部——90°/270°/正常横屏均适用。
+    if (tocEl) {
+      tocEl.style.top = "0";
+      tocEl.style.bottom = "auto";
+    }
+
+    var rb = document.getElementById("rotate");
+    if (rb) rb.classList.toggle("show", forceRot);
+    return forceRot;
+  }
+
+  // 按视口计算 16:9 画布尺寸并写入 --ch（供字号缩放）。强制横屏时按旋转后的可用区计算，保证填满。
+  function fit() {
+    if (!canvas) return;
+    applyOrientation(); // 切换顶部提示条、复位画布正立（不再旋转）
+    var vw = window.innerWidth || document.documentElement.clientWidth || 360;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 640;
+    // 关键：微信/X5 横屏时 innerWidth 不翻转，故按物理方向用 max/min 还原真实可用区，
+    // 让横屏铺满、竖屏等比缩小，画布始终正立（不旋转）——“强制横屏”误判已根治。
+    var land = true; // 强制横屏：永远按物理横屏铺满（长边=宽、短边=高），不再检测方向，根治微信「横不过来」
+    var availW = land ? Math.max(vw, vh) : Math.min(vw, vh);
+    var availH = land ? Math.min(vw, vh) : Math.max(vw, vh);
+    var W, H;
+    if (availW / availH >= 16 / 9) { H = availH; W = Math.round(H * 16 / 9); }
+    else { W = availW; H = Math.round(W * 9 / 16); }
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    // --ch 写在 documentElement 上：让位于旋转层之外的顶层目录条(#toc)也能继承字号缩放
+    document.documentElement.style.setProperty("--ch", H + "px");
+    // --ch 变化后，文字块需重新按新基准缩放字号以适配固定高度
+    fitTextToBox();
+  }
+
+  // 文字块：高度随内容自适应（box height=auto + min-height 兜底），当内容超出「框顶→页面底」的可用高度时，
+  // 自动缩小整块字号（zh/en 通过 em 联动）直到刚好装进可用区——既不裁字、也不溢出页面。
+  // 可用高度 = canvasH * (100 - el.y)/100，与设备无关（同比例缩放），故电脑/手机渲染一致。
+  function fitTextToBox() {
+    if (!canvas) return;
+    var canvasH = canvas.clientHeight;
+    Array.prototype.slice.call(canvas.querySelectorAll(".el-text")).forEach(function (box) {
+      var fs0 = box.getAttribute("data-fs");
+      if (!fs0) return;
+      var hp = parseFloat(box.getAttribute("data-hpct")) || 0;
+      box.style.fontSize = fs0; // 复位为原始基准（calc(var(--ch)*x)），随 --ch 自适应
+      box.style.height = "auto";
+      box.style.overflow = "visible";
+      var topPct = parseFloat(box.style.top) || 0;
+      var availPx, hardBox = false;
+      if (hp > 0) {
+        // 文字有设计高度：锁死到 el.h% 硬框，字号适配该框 → 桌面/手机几何一致，不再因窄屏换行错位
+        availPx = canvasH * hp / 100; hardBox = true;
+      } else {
+        // 允许铺到页面底部（留 1% 安全边距），保证文字绝不溢出页面、也不被页面裁掉底部
+        availPx = canvasH * (100 - topPct) / 100 - canvasH * 0.01;
+      }
+      if (availPx < 12) availPx = 12;
+      var tries = 0;
+      while (box.scrollHeight > availPx + 1 && tries < 140) {
+        var cur = parseFloat(getComputedStyle(box).fontSize);
+        if (!cur || cur < 6) break; // 字号下限保护，避免无限缩小
+        box.style.fontSize = (cur * 0.97).toFixed(2) + "px";
+        tries++;
+      }
+      if (hardBox) { box.style.height = hp + "%"; box.style.overflow = "hidden"; }
+    });
+  }
+
+  function build() {
+    if (!content || !content.pages || !content.pages.length) {
+      stage.innerHTML = '<div class="rotor" id="rotor"><div class="fit"><div class="canvas"><section class="page active"><div class="el el-text" style="left:30%;top:45%;width:40%;text-align:center"><div class="el-zh">画册内容为空</div></div></section></div></div></div>';
+      canvas = document.querySelector(".canvas"); rotor = document.getElementById("rotor"); fit(); return;
+    }
+    var brand = content.brand || {};
+    document.documentElement.style.setProperty("--primary", brand.primary || "#13283f");
+    document.documentElement.style.setProperty("--accent", brand.accent || "#c9a24b");
+
+    stage.innerHTML = '<div class="rotor" id="rotor"><div class="fit"><div class="canvas" id="canvas">' +
+      content.pages.map(function (p, i) {
+        var bg = p.bg || "#0d1b2a";
+        return '<section class="page' + (i === 0 ? " active" : "") + '" data-i="' + i + '" style="background:' + esc(bg) + '">' + renderElements(p) + "</section>";
+      }).join("") + "</div></div></div>";
+
+    canvas = document.getElementById("canvas");
+    rotor = document.getElementById("rotor");
+    buildToc();
+    fit();
+    pages = Array.prototype.slice.call(canvas.querySelectorAll(".page"));
+    dotsWrap.innerHTML = content.pages.map(function (_, i) {
+      return '<span class="dot' + (i === 0 ? " active" : "") + '" data-i="' + i + '"></span>';
+    }).join("");
+    pageNo.textContent = "1 / " + content.pages.length;
+    ensureImages(0);
+    bindDots();
+    Array.prototype.slice.call(canvas.querySelectorAll(".el-btn[data-link]")).forEach(function (b) {
+      b.style.cursor = "pointer";
+      b.addEventListener("click", function () { var l = b.getAttribute("data-link"); if (l) window.open(l, "_blank", "noopener"); });
+    });
+    // 导出模式：画册构建完成后立即显示导出按钮（与是否存在 el-btn 无关）
+    if (EXPORT_MODE) { var pb = document.getElementById("pdfBtn"); if (pb) pb.style.display = "block"; }
+  }
+
+  // 顶部目录导航：从 content.pages[i].nav 读取中英文标签，点击跳转到对应页。
+  // #toc 插在画布内、贴画布顶部：画布随内容一起被强制旋转 90°，而内容本身是正立显示的，
+  // 故画布顶边即等于物理顶部——强制横屏与正常横屏下目录条都落在物理正上方且方向正确。
+  function buildToc() {
+    tocEl = null;
+    tocItems = [];
+    if (!canvas || !content || !content.pages) return;
+    var old = document.getElementById("toc");
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var toc = document.createElement("div");
+    toc.id = "toc";
+    // 每栏目仅首页（带 nav 且为栏目首个同名项）生成目录项；其余页归入该栏目，不额外占导航
+    content.pages.forEach(function (p, i) {
+      if (!p.nav || !p.nav.zh) return;
+      if (tocItems.length && tocItems[tocItems.length - 1].zh === p.nav.zh) return;
+      tocItems.push({ pageIndex: i, zh: p.nav.zh, en: p.nav.en || p.nav.zh });
+    });
+    tocItems.forEach(function (e, idx) {
+      var item = document.createElement("div");
+      item.className = "toc-item" + (e.pageIndex === current ? " active" : "");
+      item.setAttribute("data-target", e.pageIndex);
+      item.innerHTML = '<span class="t-zh">' + esc(e.zh) + '</span><span class="t-en">' + esc(e.en) + '</span>';
+      item.addEventListener("click", function (ev) { ev.stopPropagation(); goTo(e.pageIndex); });
+      toc.appendChild(item);
+    });
+    canvas.insertBefore(toc, canvas.firstChild);
+    tocEl = toc;
+  }
+
+  /* 图片按需加载：所有页面初始只写 data-src、不写 src，避免重叠布局下浏览器一次性解码全部图片导致卡顿；
+     仅当前页及相邻页设置 src（预取），把解码压力分摊到翻页过程中。 */
+  function ensureImages(i) {
+    if (!canvas || !content || !content.pages) return;
+    [i - 1, i, i + 1].forEach(function (idx) {
+      if (idx < 0 || idx >= content.pages.length) return;
+      var pageEl = canvas.querySelector('.page[data-i="' + idx + '"]');
+      if (!pageEl) return;
+      Array.prototype.slice.call(pageEl.querySelectorAll("img[data-src]")).forEach(function (img) {
+        if (!img.getAttribute("src")) img.src = absImg(img.getAttribute("data-src"));
+      });
+    });
+  }
+
+  function goTo(i) {
+    if (i < 0 || i >= pages.length) return;
+    ensureImages(i);
+    pages.forEach(function (pg, idx) {
+      pg.classList.remove("active", "prev", "next");
+      if (idx === i) pg.classList.add("active");
+      else if (idx < i) pg.classList.add("prev");
+      else pg.classList.add("next");
+    });
+    Array.prototype.slice.call(dotsWrap.children).forEach(function (d, idx) {
+      d.classList.toggle("active", idx === i);
+    });
+    if (tocEl) {
+      // 高亮当前页所属栏目的目录项：tocItems 按 pageIndex 升序，取最后一个 <= i 的项
+      var ti = 0;
+      for (var k = 0; k < tocItems.length; k++) {
+        if (tocItems[k].pageIndex <= i) ti = k; else break;
+      }
+      Array.prototype.slice.call(tocEl.children).forEach(function (it, idx) {
+        it.classList.toggle("active", idx === ti);
+      });
+    }
+    pageNo.textContent = (i + 1) + " / " + pages.length;
+    current = i;
+  }
+
+  function bindDots() {
+    Array.prototype.slice.call(dotsWrap.children).forEach(function (d) {
+      d.addEventListener("click", function () { goTo(parseInt(d.getAttribute("data-i"), 10)); });
+    });
+  }
+
+  function next() { goTo(current + 1); }
+  function prev() { goTo(current - 1); }
+
+  // 触摸 / 鼠标左右滑动翻页（基础交互，无复杂手势）
+  var startX = 0, startY = 0, tracking = false;
+  function onStart(e) {
+    if (e.touches && e.touches.length !== 1) return;
+    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    startY = (e.touches ? e.touches[0].clientY : e.clientY);
+    tracking = true;
+  }
+  function onEnd(e) {
+    if (!tracking) return; tracking = false;
+    var cx = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+    var cy = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY);
+    var dx = cx - startX, dy = cy - startY;
+    // 强制横屏下内容被 CSS 旋转 90°，且微信/X5 物理横竖屏无法可靠检测，故采用「主轴无关」翻页：
+    // 手指在屏幕上任一明显方向滑动（左右或上下，取位移更大的轴）即翻页，保证任意持机方向都能滑动翻页。
+    var horiz = Math.abs(dx) >= Math.abs(dy);
+    var mag = horiz ? dx : dy;
+    if (Math.abs(mag) > 45) { if (mag < 0) next(); else prev(); }
+  }
+  if (stage) {
+    stage.addEventListener("touchstart", onStart, { passive: true });
+    stage.addEventListener("touchend", onEnd, { passive: true });
+    stage.addEventListener("mousedown", onStart);
+    stage.addEventListener("mouseup", onEnd);
+  }
+
+  var prevBtn = document.getElementById("prevBtn");
+  var nextBtn = document.getElementById("nextBtn");
+  if (prevBtn) prevBtn.addEventListener("click", prev);
+  if (nextBtn) nextBtn.addEventListener("click", next);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight") next();
+    else if (e.key === "ArrowLeft") prev();
+  });
+
+  // 云端热更新：页面已用内置内容秒开，这里再后台静默拉取云端最新版本。
+  // 仅在确认为新版本时才重绘，并恢复用户当前所在页码；任何失败都静默忽略，画面保持不动。
+  // 这样即使云端服务不可用、被拦截或未配置，客人打开画册也完全不受影响。
+  function pullCloudUpdate() {
+    if (!CLOUD_JSON_URL) return; // 未配置端点：维持内置内容，不发起任何外部请求
+    var ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 5000); // 5 秒超时，绝不阻塞/拖慢打开
+    var url = CLOUD_JSON_URL + (CLOUD_JSON_URL.indexOf("?") >= 0 ? "&" : "?") + "t=" + Date.now();
+    var opts = { cache: "no-store" };
+    if (ctl) opts.signal = ctl.signal;
+    fetch(url, opts)
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (d) {
+        clearTimeout(timer);
+        var doc = d && d.payload ? d.payload : d; // 兼容云函数包装与裸 JSON
+        if (!doc || !doc.pages || !doc.pages.length) return; // 云端为空：继续用内置内容
+        // 版本比对：内容没变就不重绘，避免无谓闪烁
+        if (content && content.updatedAt && doc.updatedAt && doc.updatedAt === content.updatedAt) return;
+        var keep = current; // 记住当前页码，热替换后回到原处
+        content = doc;
+        build();
+        if (keep > 0 && keep < content.pages.length) goTo(keep);
+      })
+      .catch(function () { clearTimeout(timer); }); // 云端不可用：静默降级，用户无感
+  }
+
+  // 竖屏提示条：由 CSS 控制显示（竖屏常显、横屏隐藏），不依赖 JS 定时器，避免遮挡或误隐藏
+  // 注意：pullCloudUpdate 必须在 content 就绪之后调用，避免与异步的 fetchLiveContent 争抢赋值
+  if (content) { build(); pullCloudUpdate(); } // 分享短链：内容已同步就绪，直接渲染
+  else if (window.__EMBED__) { content = window.__EMBED__; build(); pullCloudUpdate(); } // 部署内置内容：零等待即时渲染
+  else { fetchLiveContent(function (d) { content = d; build(); pullCloudUpdate(); }, function () {
+    stage.innerHTML = '<div class="fit"><div class="canvas"><section class="page active"><div class="el el-text" style="left:25%;top:45%;width:50%;text-align:center"><div class="el-zh">加载失败</div></div></section></div></div>';
+  }); }
+
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", function () {
+    var a0 = lastAngle;
+    setTimeout(function () {
+      var a1 = readAngle();
+      if (a1 === a0) angleReliable = false; // angle 未随方向变化 → 微信/X5 卡死，标记不可靠，默认横屏铺满
+      lastAngle = a1;
+      fit();
+    }, 200);
+  });
+  window.addEventListener("load", fit);
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener("change", function () {
+      var a0 = lastAngle;
+      setTimeout(function () {
+        var a1 = readAngle();
+        if (a1 === a0) angleReliable = false;
+        lastAngle = a1;
+        fit();
+      }, 50);
+    });
+  }
+  // 微信/X5 对 orientationchange 可能不触发或延迟，补一条 media query 监听，方向变化时即时重排
+  if (window.matchMedia) {
+    var mqOri = window.matchMedia("(orientation: portrait)");
+    var onMq = function () { setTimeout(fit, 50); };
+    if (mqOri.addEventListener) mqOri.addEventListener("change", onMq);
+    else if (mqOri.addListener) mqOri.addListener(onMq);
+  }
+
+  // ============ PDF 导出（后台「导出 PDF」打开 album.html?export=1 时启用）============
+  function loadScript(src) {
+    var srcs = Array.isArray(src) ? src : [src];
+    return new Promise(function (resolve, reject) {
+      var i = 0;
+      (function tryNext() {
+        if (i >= srcs.length) { reject(new Error("组件加载失败: " + srcs.join(", "))); return; }
+        var s = document.createElement("script");
+        s.src = srcs[i++];
+        s.onload = resolve;
+        s.onerror = function () { tryNext(); };
+        document.head.appendChild(s);
+      })();
+    });
+  }
+  // 预下载所有图片为 dataURL（同源，html2canvas 截图不污染画布）；云端 ?img= 代理已带 Access-Control-Allow-Origin:*
+  function preloadImagesForPdf() {
+    var srcs = [];
+    (content.pages || []).forEach(function (p) {
+      (p.elements || []).forEach(function (el) {
+        if (el.type === "image") { var s = absImg(el.src); if (s && /^https?:/.test(s)) srcs.push(s); }
+      });
+    });
+    var seen = {}, map = {};
+    var tasks = srcs.map(function (src) {
+      if (seen[src]) return Promise.resolve();
+      seen[src] = 1;
+      return new Promise(function (resolve) {
+        var img = new Image();
+        img.crossOrigin = "anonymous"; // 依赖代理 CORS 头，成功则可转 dataURL（同源）
+        var done = false;
+        var timer = setTimeout(function () { if (!done) { done = true; resolve(); } }, 12000);
+        img.onload = function () {
+          if (done) return; done = true; clearTimeout(timer);
+          try {
+            var c = document.createElement("canvas");
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            c.getContext("2d").drawImage(img, 0, 0);
+            map[src] = c.toDataURL("image/jpeg", 0.92);
+          } catch (e) { /* 跨域污染则放弃预加载，回退原 src + useCORS */ }
+          resolve();
+        };
+        img.onerror = function () { if (!done) { done = true; clearTimeout(timer); } resolve(); };
+        img.src = src;
+      });
+    });
+    return Promise.all(tasks).then(function () { return map; });
+  }
+  // 文字层字号适配（与 fitTextToBox 一致），让 PDF 与屏幕显示几何一致、不溢出
+  function fitTextInPage(pageEl, H) {
+    Array.prototype.slice.call(pageEl.querySelectorAll(".el-text")).forEach(function (box) {
+      var fs0 = box.getAttribute("data-fs");
+      if (!fs0) return;
+      var hp = parseFloat(box.getAttribute("data-hpct")) || 0;
+      box.style.fontSize = fs0;
+      box.style.height = "auto";
+      box.style.overflow = "visible";
+      var topPct = parseFloat(box.style.top) || 0;
+      var availPx, hardBox = false;
+      if (hp > 0) { availPx = H * hp / 100; hardBox = true; }
+      else { availPx = H * (100 - topPct) / 100 - H * 0.01; }
+      if (availPx < 12) availPx = 12;
+      var tries = 0;
+      while (box.scrollHeight > availPx + 1 && tries < 160) {
+        var cur = parseFloat(getComputedStyle(box).fontSize);
+        if (!cur || cur < 6) break;
+        box.style.fontSize = (cur * 0.97).toFixed(2) + "px";
+        tries++;
+      }
+      if (hardBox) { box.style.height = hp + "%"; box.style.overflow = "hidden"; }
+    });
+  }
+  function doExportPdf(btn) {
+    var W = 1600, H = 900; // 高清 16:9 横屏，所见即所得，不再为体积压低分辨率
+    var pdfRender = document.getElementById("pdfRender");
+    if (!pdfRender) { pdfRender = document.createElement("div"); pdfRender.id = "pdfRender"; document.body.appendChild(pdfRender); }
+    pdfRender.style.cssText = "position:fixed;left:-10000px;top:0;width:" + W + "px;height:" + H + "px;";
+    pdfRender.style.setProperty("--ch", H + "px");
+    function raf() { return new Promise(function (r) { requestAnimationFrame(function () { setTimeout(r, 30); }); }); }
+    var st = document.getElementById("pdfStatus");
+    var pageImgs = []; // 缓存每页高清图，供整本/分卷复用，避免重复截图
+    return preloadImagesForPdf().then(function (imgMap) {
+      var pages = content.pages;
+      var pdf = new window.jspdf.jsPDF({ unit: "px", format: [W, H], orientation: "landscape" });
+      var failed = [];
+      var chain = Promise.resolve();
+      pages.forEach(function (p, i) {
+        chain = chain.then(function () {
+          if (btn) btn.textContent = "正在生成…(" + Math.round(i / pages.length * 100) + "%)";
+          if (st) st.textContent = "渲染第 " + (i + 1) + " / " + pages.length + " 页（高清横屏）";
+          pdfRender.innerHTML = "";
+          var sec = document.createElement("section");
+          sec.style.cssText = "position:relative;width:" + W + "px;height:" + H + "px;background:" + (p.bg || "#0d1b2a") + ";overflow:hidden;";
+          // renderElements 输出 img 用 data-src（懒加载占位）；PDF 模式直接换为 src，并优先用预下载的 dataURL（同源，不被污染）
+          sec.innerHTML = renderElements(p).replace(/data-src="([^"]*)"/g, function (mm, src) { return 'src="' + (imgMap[absImg(src)] || absImg(src)) + '"'; });
+          pdfRender.appendChild(sec);
+          fitTextInPage(sec, H);
+          var shot = new Promise(function (resolve, reject) {
+            html2canvas(sec, { scale: 1, backgroundColor: null, useCORS: true, logging: false }).then(resolve, reject);
+          });
+          var timeout = new Promise(function (_, reject) { setTimeout(function () { reject(new Error("截图超时")); }, 25000); });
+          return Promise.race([shot, timeout]).then(function (cv) {
+            var imgData = cv.toDataURL("image/jpeg", 0.88); // 高清质量
+            pageImgs[i] = imgData;
+            if (i > 0) pdf.addPage([W, H], "landscape");
+            pdf.addImage(imgData, "JPEG", 0, 0, W, H);
+            cv = null; // 释放大 canvas，避免 18 页累积 OOM 卡死
+            return raf();
+          }).catch(function (e) {
+            failed.push(i + 1);
+            console.warn("第" + (i + 1) + "页失败，已跳过：", e);
+          });
+        });
+      });
+      return chain.then(function () { return { pdf: pdf, failed: failed, pageImgs: pageImgs }; });
+    });
+  }
+  function savePdfRobust(pdf, name, failed, btn, onDone) {
+    var finish = function (okMsg) {
+      if (btn) { btn.disabled = false; btn.textContent = "导出 PDF"; }
+      if (onDone) onDone();
+      var extra = (failed && failed.length) ? "（注：第 " + failed.join("、") + " 页截图失败已跳过，可重试）" : "";
+      alert((okMsg || "PDF 已生成，开始下载") + extra);
+    };
+    try { pdf.save(name + ".pdf"); finish(); }
+    catch (e1) {
+      try {
+        var blob = pdf.output("blob");
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url; a.download = name + ".pdf"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 30000);
+        finish();
+      } catch (e2) {
+        try { window.open(pdf.output("dataurlstring"), "_blank"); finish("PDF 已在新窗口打开，请手动保存"); }
+        catch (e3) { if (btn) { btn.disabled = false; btn.textContent = "导出 PDF"; } alert("PDF 已生成但下载被拦截，请用电脑浏览器打开本页后再导出，或点「分卷下载(高清)」。"); }
+      }
+    }
+  }
+  // 分卷下载：每 3 页合成一个小 PDF 依次触发下载。单卷体积小（<1.5MB），微信/手机 WebView 不易拦截；
+  // 高清分辨率与整本一致（1600×900，横向），仅拆分文件以规避大文件下载截断。
+  function downloadVolumes(pageImgs, name) {
+    var W = 1600, H = 900, per = 3;
+    var vols = Math.ceil(pageImgs.length / per);
+    var st = document.getElementById("pdfStatus");
+    if (st) st.textContent = "准备分卷下载（共 " + vols + " 卷，每卷约 3 页，高清横屏）…";
+    function buildVolume(startIdx) {
+      var pdf = new window.jspdf.jsPDF({ unit: "px", format: [W, H], orientation: "landscape" });
+      var first = true;
+      for (var k = startIdx; k < startIdx + per && k < pageImgs.length; k++) {
+        if (!pageImgs[k]) continue; // 跳过截图失败的页
+        if (!first) pdf.addPage([W, H], "landscape");
+        pdf.addImage(pageImgs[k], "JPEG", 0, 0, W, H);
+        first = false;
+      }
+      return pdf;
+    }
+    var done = 0;
+    for (var v = 0; v < vols; v++) {
+      (function (n) {
+        setTimeout(function () {
+          var pdf = buildVolume(n * per);
+          try { pdf.save(name + "_第" + (n + 1) + "卷.pdf"); }
+          catch (e) {
+            try {
+              var b = pdf.output("blob"); var u = URL.createObjectURL(b);
+              var a = document.createElement("a"); a.href = u; a.download = name + "_第" + (n + 1) + "卷.pdf";
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e2) {} }, 30000);
+            } catch (e2) {}
+          }
+          done++;
+          if (st) st.textContent = "分卷下载中…(" + done + "/" + vols + ")";
+          if (done === vols && st) st.textContent = "分卷已全部触发（共 " + vols + " 卷）。若手机只存到第一卷，请用电脑浏览器打开本页点「导出 PDF」取整本。";
+        }, n * 900); // 卷间留间隔，避免被浏览器一次性拦截多个下载
+      })(v);
+    }
+  }
+  function exportPDF() {
+    if (!content || !content.pages || !content.pages.length) { alert("画册内容为空，无法导出 PDF"); return; }
+    var btn = document.getElementById("pdfBtn");
+    var vols = document.getElementById("pdfVolumes");
+    var st = document.getElementById("pdfStatus");
+    if (st) { st.style.display = "block"; st.textContent = "开始生成高清横屏 PDF…"; }
+    if (btn) { btn.disabled = true; btn.textContent = "准备组件…"; }
+    if (vols) vols.style.display = "none";
+    Promise.all([
+      loadScript(["assets/vendor/html2canvas.min.js", "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"]),
+      loadScript(["assets/vendor/jspdf.umd.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"])
+    ]).then(function () {
+      if (typeof html2canvas === "undefined" || !window.jspdf || !window.jspdf.jsPDF) throw new Error("PDF 组件未加载（请检查网络后重试）");
+      if (btn) btn.textContent = "渲染中…";
+      return doExportPdf(btn);
+    }).then(function (res) {
+      window.__pdfPageImgs = res.pageImgs; // 缓存高清图，供「分卷下载」复用
+      if (btn) btn.textContent = "打包下载…";
+      if (st) st.textContent = "整本打包完成，正在尝试下载…";
+      savePdfRobust(res.pdf, (content.brand && content.brand.name) || "优安纳伞业画册", res.failed, btn, function () {
+        if (vols) vols.style.display = "inline-block";
+        if (st) st.textContent = "整本已尝试下载。" + (res.failed.length ? "第 " + res.failed.join("、") + " 页失败已跳过。" : "") + " 若整本被拦截/只下到一半，点「分卷下载(高清)」按每 3 页一个文件下载。";
+      });
+    }).catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = "导出 PDF"; }
+      if (st) st.textContent = "导出失败：" + (e && e.message ? e.message : e);
+      alert("导出失败：" + (e && e.message ? e.message : e));
+    });
+  }
+  if (EXPORT_MODE) {
+    var _pb = document.getElementById("pdfBtn");
+    if (_pb) _pb.addEventListener("click", exportPDF);
+    var _pv = document.getElementById("pdfVolumes");
+    if (_pv) _pv.addEventListener("click", function () {
+      if (window.__pdfPageImgs) downloadVolumes(window.__pdfPageImgs, (content.brand && content.brand.name) || "优安纳伞业画册");
+    });
+  }
+})();
+
+</script>
+</body>
+</html>
